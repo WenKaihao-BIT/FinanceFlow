@@ -1,18 +1,43 @@
 import express from "express";
+import os from "os";
+import path from "path";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
-import { addTransaction, deleteTransaction, getSummary, getTransactions } from "./src/db";
+import { addTransaction, deleteTransaction, getSummary, getTransactions, getDatabaseStats } from "./src/db";
 import ExcelJS from 'exceljs';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  const logs: { timestamp: string; level: string; message: string }[] = [];
+  const addLog = (level: string, message: string) => {
+    logs.unshift({ timestamp: new Date().toISOString(), level, message });
+    if (logs.length > 50) logs.pop();
+  };
+
   app.use(express.json());
+
+  // Logging middleware
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      addLog('info', `${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    });
+    next();
+  });
 
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.get("/api/logs", (req, res) => {
+    res.json(logs);
   });
 
   app.get("/api/export/excel", async (req, res) => {
@@ -71,6 +96,26 @@ async function startServer() {
       res.status(500).json({ error: "Failed to fetch summary" });
     }
   });
+  
+  app.get("/api/system-info", (req, res) => {
+    try {
+      const dbStats = getDatabaseStats();
+      const info = {
+        uptime: os.uptime(),
+        platform: os.platform(),
+        arch: os.arch(),
+        cpus: os.cpus().length,
+        totalMemory: os.totalmem(),
+        freeMemory: os.freemem(),
+        loadAvg: os.loadavg(),
+        nodeVersion: process.version,
+        dbStats
+      };
+      res.json(info);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch system info" });
+    }
+  });
 
   app.post("/api/transactions", (req, res) => {
     try {
@@ -95,62 +140,6 @@ async function startServer() {
     }
   });
 
-  // AI Agent Endpoint
-  app.post("/api/ai/parse", async (req, res) => {
-    try {
-      const { text } = req.body;
-      if (!text) {
-        return res.status(400).json({ error: "No text provided" });
-      }
-
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: "Gemini API key not configured" });
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      
-      const prompt = `
-        Parse the following financial transaction text into structured JSON.
-        Current date is ${new Date().toISOString().split('T')[0]}.
-        If the date is not specified, use today's date.
-        Infer the category from the description (e.g., 'Food', 'Transport', 'Salary', 'Utilities', 'Entertainment').
-        
-        Text: "${text}"
-      `;
-
-      const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              type: { type: Type.STRING, enum: ["income", "expense"] },
-              amount: { type: Type.NUMBER },
-              category: { type: Type.STRING },
-              date: { type: Type.STRING, description: "ISO 8601 date string (YYYY-MM-DD)" },
-              description: { type: Type.STRING },
-              confidence: { type: Type.NUMBER, description: "Confidence score 0-1" }
-            },
-            required: ["type", "amount", "category", "date", "description"]
-          }
-        }
-      });
-
-      const responseText = result.text;
-      if (!responseText) {
-        throw new Error("No response text");
-      }
-      res.json(JSON.parse(responseText));
-
-    } catch (error) {
-      console.error("AI Parse Error:", error);
-      res.status(500).json({ error: "Failed to parse with AI" });
-    }
-  });
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -158,9 +147,19 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+  } else {
+    // Serve static files in production
+    app.use(express.static(path.join(__dirname, "dist")));
+    
+    // SPA fallback
+    app.get("*", (req, res, next) => {
+      if (req.url.startsWith("/api")) return next();
+      res.sendFile(path.join(__dirname, "dist", "index.html"));
+    });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
+    addLog('info', `Server started on port ${PORT}`);
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }

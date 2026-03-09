@@ -84,9 +84,21 @@ export const getSummary = () => {
   };
 };
 
+export const getDatabaseStats = () => {
+  const stats = fs.statSync(DB_FILE);
+  const db = readDB();
+  return {
+    fileSize: stats.size,
+    recordCount: db.transactions.length,
+    lastModified: stats.mtime.toISOString(),
+    path: DB_FILE
+  };
+};
+
 export default {
   getTransactions,
   addTransaction,
   deleteTransaction,
-  getSummary
+  getSummary,
+  getDatabaseStats
 };

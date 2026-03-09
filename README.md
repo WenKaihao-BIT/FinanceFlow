@@ -1,106 +1,97 @@
-# FinanceFlow 本地部署指南
+# FinanceFlow 财务管理系统 - 部署与 API 指南
 
-FinanceFlow 是一个基于 React + Express + SQLite 的个人记账系统，支持可视化图表分析、Excel 导出以及 API 接口对接（可配合 OpenClaw 等 AI Agent 使用）。
-
-## 📋 前置要求
-
-在开始之前，请确保您的电脑已安装：
-
-1.  **Node.js** (推荐 v18 或更高版本)
-    *   下载地址: [https://nodejs.org/](https://nodejs.org/)
-    *   验证安装: 打开终端输入 `node -v`，应显示版本号。
-
-2.  **Git** (可选，用于克隆代码)
-    *   下载地址: [https://git-scm.com/](https://git-scm.com/)
+FinanceFlow 是一个专为个人设计的轻量级财务管理系统，具备专业级的服务器监控面板、可视化图表分析以及强大的 API 接口。它采用本地 JSON 文件存储，非常适合私有化部署。
 
 ---
 
-## 🚀 快速开始
+## 🚀 部署方法
 
-### 1. 获取代码
+### 1. 本地手动部署 (Windows/macOS/Linux)
 
-如果您是从 AI Studio 导出代码，请解压压缩包。
-或者，如果您已将代码上传到 GitHub，请克隆仓库：
+1.  **安装 Node.js**: 确保您的系统已安装 Node.js (推荐 v18+)。
+2.  **安装依赖**: 在项目根目录运行：
+    ```bash
+    npm install
+    ```
+3.  **启动服务**:
+    *   **开发模式**: `npm run dev` (支持热重载)
+    *   **生产模式**: `npm run build` 之后运行 `npm start`
 
-```bash
-git clone https://github.com/your-username/finance-flow.git
-cd finance-flow
-```
+### 2. Windows 一键启动 (推荐)
 
-### 2. 安装依赖
+如果您在 Windows 环境下使用，可以直接使用根目录提供的批处理文件：
+*   **启动服务**: 双击运行 `start.bat`。它会自动安装依赖并启动后台服务。
+*   **停止服务**: 双击运行 `stop.bat`。
 
-在项目根目录下打开终端（Terminal 或 CMD），运行以下命令安装所需的库：
+### 3. 云端部署 (Cloud Run / Docker)
 
-```bash
-npm install
-```
+本项目已适配 Google Cloud Run 等现代云平台。云端部署的逻辑如下：
 
-### 3. 配置环境变量 (可选)
-
-虽然本项目核心功能（手动记账、API 接口、Excel 导出）**不需要**配置 API Key 即可使用，但如果您想保留网页端的 "AI 智能输入" 功能，需要配置 Gemini API Key。
-
-1.  在项目根目录创建一个名为 `.env` 的文件。
-2.  填入以下内容（如果不需要 AI 功能，可跳过此步）：
-
-```env
-# 可选：用于网页端 AI 智能记账功能
-GEMINI_API_KEY=您的_Gemini_API_Key
-```
-
-### 4. 启动服务
-
-运行以下命令启动开发服务器：
-
-```bash
-npm run dev
-```
-
-*   **访问地址**: 打开浏览器访问 [http://localhost:3000](http://localhost:3000)
-*   **API 接口地址**: [http://localhost:3000/api/transactions](http://localhost:3000/api/transactions)
+1.  **构建 (Build)**: 运行 `npm run build`。这会将前端代码编译并打包到 `dist` 文件夹中。
+2.  **启动 (Start)**: 云平台会自动运行 `npm start`。
+3.  **服务 (Serve)**: `server.ts` 在生产模式下会自动识别 `dist` 文件夹，并将其作为静态资源提供给浏览器。
+4.  **端口 (Port)**: 云平台通常要求服务监听 `3000` 端口，本项目已默认配置。
+5.  **持久化 (Persistence)**: 
+    *   在 AI Studio 的预览和分享环境中，`finance.json` 会被自动保留。
+    *   如果您自行部署到标准的 Cloud Run，请注意容器是“无状态”的。建议将 `finance.json` 挂载到网络存储（如 Cloud Storage 或 Filestore），或者修改 `db.ts` 对接外部数据库（如 MongoDB/PostgreSQL）。
 
 ---
 
-## 📦 数据管理
+## 🤖 Agent API 接口说明
 
-### 数据库文件
-所有记账数据存储在项目根目录下的 `finance.db` 文件中（SQLite 数据库）。
+FinanceFlow 提供了完整的 RESTful API，方便对接 OpenClaw、Dify 或其他 AI Agent 实现自动化记账。
 
-*   **备份**: 定期复制 `finance.db` 文件到安全位置即可备份数据。
-*   **迁移**: 如果更换电脑，只需将 `finance.db` 文件复制到新电脑的同名目录下即可恢复数据。
+### 1. 记账接口 (Agent 核心)
 
-### Excel 导出
-在网页端点击 "最近交易" 卡片右上角的 **"导出 Excel"** 按钮，即可下载所有交易记录的 `.xlsx` 文件。
-
----
-
-## 🤖 对接 OpenClaw / AI Agent
-
-如果您使用 OpenClaw 或其他 AI Agent 来自动记账，请配置以下 API 信息：
-
-*   **接口地址**: `http://localhost:3000/api/transactions` (注意：本地部署时需确保 Agent 能访问您的局域网 IP，或使用内网穿透工具如 ngrok)
+*   **接口地址**: `/api/transactions`
 *   **请求方式**: `POST`
-*   **Content-Type**: `application/json`
-*   **数据格式**:
+*   **Payload**:
+    ```json
+    {
+      "type": "expense",      // "expense" (支出) 或 "income" (收入)
+      "amount": 50.5,         // 金额 (数字)
+      "category": "餐饮",     // 分类
+      "date": "2024-03-20",   // 日期 (YYYY-MM-DD)
+      "description": "午餐"   // 备注 (可选)
+    }
+    ```
 
-```json
-{
-  "type": "expense",      // 必填: "expense"(支出) 或 "income"(收入)
-  "amount": 100.00,       // 必填: 金额 (数字)
-  "category": "餐饮",     // 必填: 分类名称
-  "date": "2024-03-20",   // 必填: 日期 (YYYY-MM-DD)
-  "description": "午餐"   // 可选: 备注
-}
-```
+### 2. 财务摘要接口
+
+*   **接口地址**: `/api/summary`
+*   **请求方式**: `GET`
+*   **返回**: 包含总收入、总支出和当前余额。
+
+### 3. 系统与数据库状态
+
+*   **接口地址**: `/api/system-info`
+*   **请求方式**: `GET`
+*   **返回**: 包含服务器 CPU、内存使用情况以及 `finance.json` 的文件大小、记录总数等。
+
+### 4. 系统日志接口
+
+*   **接口地址**: `/api/logs`
+*   **请求方式**: `GET`
+*   **返回**: 最近 50 条服务器运行日志（包含 API 调用记录）。
+
+### 5. 数据导出接口
+
+*   **接口地址**: `/api/export/excel`
+*   **请求方式**: `GET`
+*   **说明**: 直接触发浏览器下载生成的 `.xlsx` 财务报表。
 
 ---
 
-## 🛠️ 常见问题
+## 📊 数据安全与维护
 
-**Q: 启动时报错 `better-sqlite3` 相关错误？**
-A: 这通常是因为 Node.js 版本不兼容或编译环境问题。请尝试删除 `node_modules` 文件夹和 `package-lock.json` 文件，然后重新运行 `npm install`。
+*   **数据存储**: 所有数据均存储在根目录的 `finance.json` 中。
+*   **备份建议**: 定期导出 Excel 或手动备份 `finance.json` 文件。
+*   **管理面板**: 登录系统后，点击左侧导航栏的 **"服务器状态"**，可以实时监控数据库健康状况并查看操作日志。
 
-**Q: 如何修改端口号？**
-A: 打开 `server.ts` 文件，找到 `const PORT = 3000;`，修改为您想要的端口号（例如 8080），然后重启服务。
+## 🛠️ 开发者说明
 
-**Q: 数据丢失了？**
-A: 请检查项目根目录下的 `finance.db` 文件是否存在。如果在 Docker 容器中运行，请确保挂载了数据卷 (Volume) 来持久化该文件。
+*   **前端**: React + Tailwind CSS + Lucide Icons
+*   **后端**: Express.js + Vite Middleware
+*   **存储**: 原生 JSON 文件操作 (db.ts)
+
+如有任何问题，请查看服务器日志或联系系统管理员。
